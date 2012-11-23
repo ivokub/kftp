@@ -8,7 +8,7 @@
 void parse_args(int argc, char **argv) {
 	opts = 0;
 	int opt;
-	while ((opt = getopt(argc, argv, "fv")) != -1) {
+	while ((opt = getopt(argc, argv, "fvh")) != -1) {
 		switch (opt) {
 		case 'f':
 			opts|=FORK;
@@ -20,8 +20,9 @@ void parse_args(int argc, char **argv) {
 			printf("Simple FTP server.\n\n"
 				"Usage:\tkftp [-f] [-v]\n\n"
 				"Argument usage:\n"
-				"\t\t-f\t\tDaemonize\n"
-				"\t\t-v\t\tVerbose output\n");
+				"\t-f\t\tDaemonize\n"
+				"\t-v\t\tVerbose output\n");
+			exit(0);
 			break;
 		default:
 			break;
