@@ -82,7 +82,6 @@ serv_conf * read_conf(char * conf_location) {
 }
 
 int start_ftp_server(int server_sock, serv_conf * main_conf) {
-	struct sockaddr_in netaddress;
 	client * this_client;
 	clients = NULL;
 	clientcount = 0;
