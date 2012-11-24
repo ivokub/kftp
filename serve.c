@@ -101,7 +101,11 @@ int start_ftp_server(int server_sock, serv_conf * main_conf) {
 client * assign_client(int server_sock) {
 	socklen_t addrlen = sizeof(struct sockaddr);
 	client * this_client = malloc(sizeof(client));
+	memset(this_client, 0, sizeof(client));
 	this_client->id = ++clientcount;
+	this_client->session.user[0] = 0;
+	this_client->session.pass[0] = 0;
+	this_client->session.auth = 0;
 	this_client->sock = accept(server_sock, (struct sockaddr *) &(this_client->addr), &addrlen);
 	fprintf(log_output, "Client %d connected from %s:%d\n", clientcount, inet_ntoa(this_client->addr.sin_addr), (int) this_client->addr.sin_port);
 	return this_client;
@@ -138,11 +142,12 @@ void remove_client(client * connected_client) {
 	if (rp == connected_client) {
 		clients = rp->next_client;
 		free(connected_client);
-	}
-	while (rp->next_client != NULL) {
-		if (rp->next_client == connected_client){
-			rp->next_client = rp->next_client->next_client;
-			free(connected_client);
+	} else {
+		while (rp->next_client != NULL) {
+			if (rp->next_client == connected_client){
+				rp->next_client = rp->next_client->next_client;
+				free(connected_client);
+			}
 		}
 	}
 }
@@ -169,7 +174,20 @@ void client_handle(client * this_client) {
 }
 
 void command_parser(client * this_client, char * command) {
-	fprintf(log_output, "Client %d command: %s", this_client->id, command);
-
-	send(((client *) this_client)->sock,command,strlen(command),0);
+	char *cmd, *args;
+	cmd = strtok(command, " \n\r");
+	args = strtok(NULL, "\n\r");
+	int found = 0;
+	handler_entry_t * hp;
+	for (hp = handlers; hp != NULL; hp = hp->next) {
+		if (strncmp(hp->cmd, cmd, strlen(hp->cmd)) == 0) {
+			found = 1;
+			hp->fun(this_client, args);
+			break;
+		}
+	}
+	if (!found) {
+		fprintf(log_output, "Client %d unknown command %s\n", this_client->id, cmd);
+		send(((client *) this_client)->sock,"400 UNKNOWN\n",12,0);
+	}
 }
