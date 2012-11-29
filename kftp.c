@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <getopt.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include "kftp.h"
 #include "serve.h"
@@ -50,4 +51,10 @@ int main(int argc, char **argv) {
 
 int daemonize() {
 	return 0;
+}
+
+char * currenttime() {
+    time_t now = time (0);
+    strftime (timebuf, 100, "%Y-%m-%d %H:%M:%S", localtime (&now));
+    return timebuf;
 }

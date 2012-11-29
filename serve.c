@@ -17,23 +17,23 @@
 void shutdown_handler(int signal) {
 	close(sock);
 	if (clients != NULL)
-	fprintf(log_output, "Caught signal. Quitting\n");
+	LOG("Caught signal. Quitting\n");
 	exit(0);
 }
 
 int serve() {
 	serve_ERRNO = 0;
-	serv_conf * main_conf = malloc(sizeof(serv_conf));
+	serv_conf * main_conf;
 	main_conf = read_conf("dummylocation");
 	if ((sock = create_serv_socket(main_conf)) == -1){
 		serve_ERRNO = 1;
 		return 1;
 	}
 
-	fprintf(log_output, "Created listening socket at %d\n", main_conf->port);
+	LOG("Created listening socket at %d\n", main_conf->port);
 	signal(15, shutdown_handler);
 	signal(2, shutdown_handler);
-	fprintf(log_output, "Created signal handlers\n");
+	LOG("Created signal handlers\n");
 	start_ftp_server(sock, main_conf);
 	close(sock);
 	return 0;
@@ -89,7 +89,7 @@ int start_ftp_server(int server_sock, serv_conf * main_conf) {
 	while (1) {
 		this_client = assign_client(server_sock);
 		if (this_client->sock == -1) {
-			fprintf(err_output, "Client socket failed\n");
+			ERR("Client socket failed\n");
 			close(this_client->sock);
 		} else {
 			thread_client_handle(this_client);
@@ -101,13 +101,16 @@ int start_ftp_server(int server_sock, serv_conf * main_conf) {
 client * assign_client(int server_sock) {
 	socklen_t addrlen = sizeof(struct sockaddr);
 	client * this_client = malloc(sizeof(client));
+	char * pwd = getenv("PWD");
 	memset(this_client, 0, sizeof(client));
 	this_client->id = ++clientcount;
 	this_client->session.user[0] = 0;
 	this_client->session.pass[0] = 0;
+	this_client->session.data_sock = -1;
+	strncpy(this_client->session.pwd, pwd, 255);
 	this_client->session.auth = 0;
 	this_client->sock = accept(server_sock, (struct sockaddr *) &(this_client->addr), &addrlen);
-	fprintf(log_output, "Client %d connected from %s:%d\n", clientcount, inet_ntoa(this_client->addr.sin_addr), (int) this_client->addr.sin_port);
+	LOG("Client %d connected from %s:%d\n", clientcount, inet_ntoa(this_client->addr.sin_addr), (int) this_client->addr.sin_port);
 	return this_client;
 }
 
@@ -164,19 +167,24 @@ void client_handle(client * this_client) {
 	send(this_client->sock, "220 Welcome\n", 12, 0);
 	while ((recvd = recv(this_client->sock, buffer, sizeof(buffer)/sizeof(char), 0)) > 0) {
 		command_parser(this_client, buffer);
+		memset(buffer, 0, 1024);
 	}
 	if (recvd == -1) {
-		fprintf(err_output, "Client %d socket broken\n", this_client->id);
+		ERR("Client %d socket broken\n", this_client->id);
 	} else {
-		fprintf(log_output, "Client %d closed connection\n", this_client->id);
+		LOG("Client %d closed connection\n", this_client->id);
 	}
 	remove_client(this_client);
 }
 
 void command_parser(client * this_client, char * command) {
 	char *cmd, *args;
+	char nullarg = 0;
 	cmd = strtok(command, " \n\r");
 	args = strtok(NULL, "\n\r");
+	if (args == NULL) {
+		args = &nullarg;
+	}
 	int found = 0;
 	handler_entry_t * hp;
 	for (hp = handlers; hp != NULL; hp = hp->next) {
@@ -187,7 +195,7 @@ void command_parser(client * this_client, char * command) {
 		}
 	}
 	if (!found) {
-		fprintf(log_output, "Client %d unknown command %s\n", this_client->id, cmd);
+		LOG("Client %d unknown command %s\n", this_client->id, cmd);
 		send(((client *) this_client)->sock,"400 UNKNOWN\n",12,0);
 	}
 }
