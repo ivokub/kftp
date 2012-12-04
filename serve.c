@@ -16,7 +16,15 @@
 
 void shutdown_handler(int signal) {
 	close(sock);
-	if (clients != NULL)
+	client * cp;
+	if (clients != NULL){
+		for (cp=clients; cp != NULL; cp = cp->next_client){
+			close(cp->sock);
+			if (cp->session.data_sock != -1){
+				close(cp->session.data_sock);
+			}
+		}
+	}
 	LOG("Caught signal. Quitting\n");
 	exit(0);
 }
@@ -102,12 +110,18 @@ client * assign_client(int server_sock) {
 	socklen_t addrlen = sizeof(struct sockaddr);
 	client * this_client = malloc(sizeof(client));
 	char * pwd = getenv("PWD");
+	char * cp;
 	memset(this_client, 0, sizeof(client));
 	this_client->id = ++clientcount;
 	this_client->session.user[0] = 0;
 	this_client->session.pass[0] = 0;
 	this_client->session.data_sock = -1;
-	strncpy(this_client->session.pwd, pwd, 255);
+	strncpy(this_client->session.pwd, pwd, 254);
+	for (cp = this_client->session.pwd; *(cp+1); cp++);
+	if (*cp != '/') {
+		cp++;
+		*cp = '/';
+	}
 	this_client->session.auth = 0;
 	this_client->sock = accept(server_sock, (struct sockaddr *) &(this_client->addr), &addrlen);
 	LOG("Client %d connected from %s:%d\n", clientcount, inet_ntoa(this_client->addr.sin_addr), (int) this_client->addr.sin_port);
@@ -150,7 +164,9 @@ void remove_client(client * connected_client) {
 			if (rp->next_client == connected_client){
 				rp->next_client = rp->next_client->next_client;
 				free(connected_client);
+				break;
 			}
+			rp = rp->next_client;
 		}
 	}
 }
