@@ -14,3 +14,6 @@ serve.o: serve.c kftp.c handlers.c
 	
 handlers.o: handlers.c serve.c kftp.c
 	gcc $(ARGS) -c handlers.c
+
+clean: $(compiled) kftp
+	rm $(compiled) kftp core
