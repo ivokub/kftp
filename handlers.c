@@ -67,12 +67,16 @@ void bg_accept(client * this_client) {
 	struct pollfd interesting;
 	interesting.fd = this_client->session.data_sock;
 	interesting.events = POLLIN;
-	if (poll(&interesting, (nfds_t) 1, 1000)>0) {
+	int oldport = this_client->session.data_sock;
+	if (poll(&interesting, (nfds_t) 1, 5000)>0) {
 		this_client->session.data_sock = accept(this_client->session.data_sock, &tempaddr, &addrlen);
+		close(oldport);
 	} else {
 		close(this_client->session.data_sock);
 		this_client->session.data_sock = -1;
 	}
+//	this_client->session.data_sock = accept(this_client->session.data_sock, &tempaddr, &addrlen);
+//	close(oldport);
 }
 
 void handler_fun_pasv(client * this_client, char * args) {
@@ -80,12 +84,13 @@ void handler_fun_pasv(client * this_client, char * args) {
 	memset(buf, 0, 64);
 	int port;
 	int clientsock;
+	int oldport = this_client->session.data_sock;
 	struct sockaddr tempaddr;
 	pthread_t current_thread;
 	socklen_t addrlen;
 	clientsock = create_data_sock(this_client);
 	port = (int) this_client->session.data_addr.sin_port;
-	sprintf(buf, "227 =127,0,0,1,%d,%d\n", port%256, port/256);
+	sprintf(buf, "227 Entering Passive Mode (127,0,0,1,%d,%d)\n", port%256, port/256);
 	LOG("Socket is on port %d\n", port);
 	pthread_create(&current_thread, NULL, bg_accept, this_client);
 	send(this_client->sock, buf, strlen(buf),0);
@@ -93,7 +98,7 @@ void handler_fun_pasv(client * this_client, char * args) {
 	if (this_client->session.data_sock == -1) {
 		send(this_client->sock, "426 Broken\n", 11, 0);
 	} else {
-		send(this_client->sock, "150 Accepted\n", 13, 0);
+//		send(this_client->sock, "150 Accepted\n", 13, 0);
 	}
 }
 
@@ -103,6 +108,7 @@ void handler_fun_list(client * this_client, char * args) {
 		send(this_client->sock, "425 No socket\n", 14, 0);
 	} else {
 		if (fork() == 0) {
+			send(this_client->sock, "150 Read\n", 9, 0);
 			LOG("Sending content of %s", args);
 			dup2(this_client->session.data_sock, 1);
 			dup2(this_client->session.data_sock, 2);
@@ -122,12 +128,112 @@ void handler_fun_list(client * this_client, char * args) {
 }
 
 void handler_fun_quit(client * this_client, char * args) {
+	send(this_client->sock, "221 Tsau\n", 9, 0);
 	close(this_client->sock);
 }
 
 void handler_fun_cwd(client * this_client, char * args) {
-	strncpy(this_client->session.pwd, args, 255);
-	send(this_client->sock, "250 OK\n", 7, 0);
+	char * cp;
+	char * delim;
+	char oldpath[512];
+	strncpy(oldpath, this_client->session.pwd, 511);
+	if (strncmp("..", args, 2) == 0) {
+		for (cp = this_client->session.pwd; *(cp+2); cp++){
+			if (*cp == '/')
+				delim = cp;
+		}
+		delim[1] = 0;
+		send(this_client->sock, "250 OK\n", 7, 0);
+	} else {
+		if (args[0] == '/') {
+			strncpy(this_client->session.pwd, args, 254);
+		} else {
+			strncat(this_client->session.pwd, args, 254);
+		}
+		for (cp = this_client->session.pwd; *(cp+1); cp++);
+		if (*cp != '/') {
+			cp++;
+			*cp = '/';
+		}
+		if (access(this_client->session.pwd, F_OK|R_OK)) {
+			strncpy(this_client->session.pwd, oldpath, 511);
+			send(this_client->sock, "550 NA\n", 7, 0);
+		} else {
+			send(this_client->sock, "250 OK\n", 7, 0);
+		}
+	}
+}
+
+void handler_fun_retr(client * this_client, char * args) {
+	FILE * stream;
+	char buf[8064];
+	int read;
+	char path[512];
+	if (args[0] == '/') {
+		strncpy(path, args, 511);
+	} else {
+		strncpy(path, this_client->session.pwd, 256);
+		strncat(path, args, 255);
+	}
+	if (this_client->session.data_sock == -1) {
+		send(this_client->sock, "426 Broken\n", 11, 0);
+	} else {
+		if ((stream = fopen(path, "r")) != NULL) {
+			send(this_client->sock, "150 Read\n", 9, 0);
+			while ((read = fread(buf, sizeof(char), 8064, stream)) > 0) {
+				send(this_client->session.data_sock, buf, read, 0);
+				memset(buf, 0, 8064);
+			}
+			close(this_client->session.data_sock);
+			this_client->session.data_sock = -1;
+			if (ferror(stream)) {
+				send(this_client->sock, "451 Read error\n", 15, 0);
+			} else {
+				send(this_client->sock, "226 Read ok\n", 12, 0);
+			}
+			fclose(stream);
+		} else {
+			close(this_client->session.data_sock);
+			send(this_client->sock, "550 Read error\n", 15, 0);
+		}
+	}
+}
+
+void handler_fun_stor(client * this_client, char * args) {
+	FILE * stream;
+	char buf[8064];
+	int read;
+	char path[512];
+	if (args[0] == '/'){
+		strncpy(path,args,511);
+	} else {
+		strncpy(path, this_client->session.pwd, 256);
+		strncat(path, args, 255);
+	}
+	if (this_client->session.data_sock == -1) {
+		send(this_client->sock, "450 Broken\n", 11, 0);
+	} else {
+		if ((stream = fopen(path, "w")) != NULL) {
+			send(this_client->sock, "150 Send\n", 9, 0);
+			while ((read = recv(this_client->session.data_sock, buf, 8064, 0)) > 0) {
+				fwrite(buf, sizeof(char), read, stream);
+			}
+			close(this_client->session.data_sock);
+			this_client->session.data_sock = -1;
+			if (ferror(stream)) {
+				send(this_client->sock, "451 Write error\n", 16, 0);
+			} else {
+				send(this_client->sock, "226 Write ok\n", 13, 0);
+			}
+			fclose(stream);
+		} else {
+			send(this_client->sock, "450 Stream open error\n", 22, 0);
+		}
+	}
+}
+
+void handler_fun_cdup(client * this_client, char * args) {
+	handler_fun_cwd(this_client, "..");
 }
 
 void build_handler(void (*fun)(client *, char *), char * CMD) {
@@ -158,4 +264,7 @@ void build_handlers() {
 	build_handler(handler_fun_list, "LIST");
 	build_handler(handler_fun_quit, "QUIT");
 	build_handler(handler_fun_cwd, "CWD");
+	build_handler(handler_fun_retr, "RETR");
+	build_handler(handler_fun_stor, "STOR");
+	build_handler(handler_fun_cdup, "CDUP");
 }
