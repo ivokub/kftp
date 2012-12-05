@@ -2,6 +2,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <ifaddrs.h>
 #include <netdb.h>
 #include <unistd.h>
 #include <string.h>
@@ -47,6 +48,27 @@ int serve() {
 	return 0;
 }
 
+struct sockaddr * local_addr(char * interface) {
+	struct ifaddrs *ifap, *ap;
+	if (serve_addr){
+		return serve_addr;
+	}
+	if (getifaddrs(&ifap)) {
+		return (struct sockaddr *) NULL;
+	}
+	serve_addr = malloc(sizeof(struct sockaddr));
+
+	for (ap = ifap; ap != NULL; ap=ap->ifa_next) {
+		if (ap->ifa_addr->sa_family == AF_INET && !strncmp(interface, ap->ifa_name, 5)){
+			memcpy(serve_addr, ap->ifa_addr, sizeof(struct sockaddr));
+			break;
+		}
+	}
+	LOG("Interface %s address %s\n", interface, inet_ntoa(((struct sockaddr_in *) serve_addr)->sin_addr));
+	return serve_addr;
+
+}
+
 int create_serv_socket(serv_conf * main_conf) {
 	int sock;
 	struct addrinfo hints;
@@ -59,21 +81,27 @@ int create_serv_socket(serv_conf * main_conf) {
 	hints.ai_flags=0;
 	hints.ai_protocol=0;
 	hints.ai_canonname = NULL;
-	hints.ai_addr = NULL;
+	hints.ai_addr = local_addr(main_conf->interface);
+	((struct sockaddr_in *) hints.ai_addr)->sin_port = htons((unsigned short int) main_conf->port);
 	hints.ai_next = NULL;
-	if (getaddrinfo(NULL, port, &hints, &results)) {
-		fprintf(err_output, "Address error\n");
-		return -1;
-	}
-	for (resptr = results; resptr != NULL; resptr = resptr->ai_next) {
-		sock = socket(resptr->ai_family, resptr->ai_socktype, resptr->ai_protocol);
-		if (sock == -1) {
-			continue;
-		}
-		if (bind(sock, resptr->ai_addr, resptr->ai_addrlen) == 0){
-			listen(sock, main_conf->backlog);
-			return sock;
-		}
+//	if (getaddrinfo(NULL, port, &hints, &results)) {
+//		fprintf(err_output, "Address error\n");
+//		return -1;
+//	}
+//	for (resptr = results; resptr != NULL; resptr = resptr->ai_next) {
+//		sock = socket(resptr->ai_family, resptr->ai_socktype, resptr->ai_protocol);
+//		if (sock == -1) {
+//			continue;
+//		}
+//		if (bind(sock, resptr->ai_addr, resptr->ai_addrlen) == 0){
+//			listen(sock, main_conf->backlog);
+//			return sock;
+//		}
+//	}
+	sock = socket(AF_INET, SOCK_STREAM, 0);
+	if (bind(sock, hints.ai_addr, sizeof(struct sockaddr)) == 0){
+		listen(sock, main_conf->backlog);
+		return sock;
 	}
 	close(sock);
 	return -1;
@@ -86,6 +114,11 @@ serv_conf * read_conf(char * conf_location) {
 	main_conf->port = PORT;
 	main_conf->backlog = BACKLOG;
 	main_conf->maxconn = MAXCONN;
+	if (interface == 0){
+		strcpy(main_conf->interface, "lo");
+	} else {
+		strncpy(main_conf->interface, interface, 5);
+	}
 	return main_conf;
 }
 
@@ -163,7 +196,7 @@ void remove_client(client * connected_client) {
 		while (rp->next_client != NULL) {
 			if (rp->next_client == connected_client){
 				rp->next_client = rp->next_client->next_client;
-				free(connected_client);
+				free(connected_client);				// <--- WAT?!?
 				break;
 			}
 			rp = rp->next_client;

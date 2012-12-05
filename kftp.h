@@ -22,6 +22,7 @@
 	int daemonize();
 
 	int opts;
+	char interface[10];
 	FILE * log_output;
 	FILE * err_output;
 #endif /* KFTP_H_ */

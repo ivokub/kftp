@@ -22,6 +22,7 @@
 
 	handler_entry_t * handlers;
 	void build_handler(void (*fun)(client *, char *), char *);
+	char pasv_addr[16];
 
 
 #endif /* HANDLERS_H_ */

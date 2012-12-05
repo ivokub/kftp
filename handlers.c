@@ -9,6 +9,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <unistd.h>
 #include <poll.h>
 #include "handlers.h"
@@ -79,6 +81,19 @@ void bg_accept(client * this_client) {
 //	close(oldport);
 }
 
+char * parse_local_addr(){
+	char parsed[16], *p;
+	struct sockaddr_in * addr = (struct sockaddr_in *) local_addr("");
+	strncpy(parsed, inet_ntoa(addr->sin_addr), 16);
+	for (p=parsed; *p; p++){
+		if (*p == '.'){
+			*p = ',';
+		}
+	}
+	strncpy(pasv_addr, parsed, 16);
+	return pasv_addr;
+}
+
 void handler_fun_pasv(client * this_client, char * args) {
 	char buf[64];
 	memset(buf, 0, 64);
@@ -90,7 +105,7 @@ void handler_fun_pasv(client * this_client, char * args) {
 	socklen_t addrlen;
 	clientsock = create_data_sock(this_client);
 	port = (int) this_client->session.data_addr.sin_port;
-	sprintf(buf, "227 Entering Passive Mode (127,0,0,1,%d,%d)\n", port%256, port/256);
+	sprintf(buf, "227 Entering Passive Mode (%s,%d,%d)\n", parse_local_addr(), port%256, port/256);
 	LOG("Socket is on port %d\n", port);
 	pthread_create(&current_thread, NULL, bg_accept, this_client);
 	send(this_client->sock, buf, strlen(buf),0);

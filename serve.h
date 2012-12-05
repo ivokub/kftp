@@ -29,6 +29,7 @@
 		int backlog;
 		int port;
 		int maxconn;
+		char interface[6];
 	} serv_conf;
 	typedef struct client_s client;
 	typedef struct client_s {
@@ -42,9 +43,11 @@
 	int sock;
 	client * clients;
 	int clientcount;
+	struct sockaddr * serve_addr;
 
 	int serve();
 	serv_conf * read_conf(char *);
+	struct sockaddr * local_addr(char *);
 	int create_serv_socket(serv_conf *);
 	int start_ftp_server(int, serv_conf *);
 

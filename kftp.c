@@ -2,6 +2,7 @@
 #include <getopt.h>
 #include <stdlib.h>
 #include <time.h>
+#include <string.h>
 
 #include "kftp.h"
 #include "serve.h"
@@ -9,7 +10,7 @@
 void parse_args(int argc, char **argv) {
 	opts = 0;
 	int opt;
-	while ((opt = getopt(argc, argv, "fvh")) != -1) {
+	while ((opt = getopt(argc, argv, "fvhi:")) != -1) {
 		switch (opt) {
 		case 'f':
 			opts|=FORK;
@@ -17,10 +18,14 @@ void parse_args(int argc, char **argv) {
 		case 'v':
 			opts|=VERBOSE;
 			break;
+		case 'i':
+			strncpy(interface, optarg, 9);
+			break;
 		case 'h':
 			printf("Simple FTP server.\n\n"
-				"Usage:\tkftp [-f] [-v]\n\n"
+				"Usage:\tkftp [-f] [-v] [-i int]\n\n"
 				"Argument usage:\n"
+				"\t-i\t\tInterface\n"
 				"\t-f\t\tDaemonize\n"
 				"\t-v\t\tVerbose output\n");
 			exit(0);
